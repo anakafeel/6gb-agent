@@ -1,0 +1,9 @@
+use_default_settings: true
+server:
+  limiter: false
+  image_proxy: false
+search:
+  # The MCP server reads results through the JSON API.
+  formats:
+    - html
+    - json

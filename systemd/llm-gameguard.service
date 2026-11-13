@@ -1,0 +1,10 @@
+[Unit]
+Description=Stop the local LLM server while a game is running
+
+[Service]
+ExecStart=%h/.local/bin/llm-gameguard
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

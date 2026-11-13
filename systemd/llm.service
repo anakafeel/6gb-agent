@@ -1,0 +1,24 @@
+[Unit]
+Description=Local LLM server (llama.cpp, MoE offload for 6 GB GPUs)
+After=network.target
+# Crash recovery gives up after 5 failures in 2 min (a real bug, not a blip).
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+ExecStart=%h/.local/bin/llm-serve
+Restart=on-failure
+RestartSec=5
+# A game launch must free the GPU fast; don't wait for an in-flight request.
+TimeoutStopSec=5
+# Under RAM pressure the kernel kills the model before your browser or game; systemd restarts it.
+OOMScoreAdjust=500
+# For --mlock. Only works once the user manager's hard limit is raised (README: Pinning).
+LimitMEMLOCK=infinity
+# Yield CPU and disk to foreground apps when they compete; full speed otherwise.
+CPUWeight=50
+IOWeight=50
+# Overrides, e.g. Environment=CTX=32768
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Serve a large MoE model on a 6 GB GPU: attention + KV on GPU, expert weights in system RAM.
+# Every value can be overridden from the environment (see systemd/llm.service).
+set -euo pipefail
+
+LLAMA_SERVER="${LLAMA_SERVER:-$HOME/src/llama.cpp/build/bin/llama-server}"
+MODEL="${MODEL:-$HOME/models/Huihui-Qwen3.6-35B-A3B-abliterated.i1-IQ4_XS.gguf}"
+ALIAS="${ALIAS:-qwen3.6-35b-a3b}"
+PORT="${PORT:-8080}"
+CTX="${CTX:-65536}"
+# All 40 expert layers on CPU. Lower values OOM on 6 GB once the desktop holds ~1.7 GB.
+NCMOE="${NCMOE:-40}"
+# 2048 is ~2.7x faster prompt processing than 512; 4096 does not fit in 6 GB.
+UBATCH="${UBATCH:-2048}"
+# Unload weights + KV after this many idle seconds; next request reloads (~10 s warm).
+IDLE="${IDLE:-300}"
+# Abliterated Qwen can think forever; cap it.
+THINK_BUDGET="${THINK_BUDGET:-4096}"
+# Pin weights in RAM so busy desktops can't evict them (that cut prompt speed ~8x).
+# Needs a raised memlock limit (see README); without it llama.cpp warns and runs unpinned.
+MLOCK="${MLOCK:-1}"
+EXTRA=()
+[[ "$MLOCK" == 1 ]] && EXTRA+=(--load-mode mmap+mlock)
+
+[[ -x "$LLAMA_SERVER" ]] || { echo "llama-server not found at $LLAMA_SERVER" >&2; exit 1; }
+[[ -f "$MODEL" ]] || { echo "model not found at $MODEL" >&2; exit 1; }
+
+exec "$LLAMA_SERVER" -m "$MODEL" --alias "$ALIAS" \
+  -ngl 99 -ncmoe "$NCMOE" -fa on -ctk q8_0 -ctv q8_0 \
+  -c "$CTX" -b "$UBATCH" -ub "$UBATCH" -np 1 --jinja \
+  --temp 0.6 --top-p 0.95 --top-k 20 --min-p 0 \
+  --reasoning-budget "$THINK_BUDGET" --reasoning-budget-message "Enough thinking. Act now." \
+  --sleep-idle-seconds "$IDLE" \
+  --host 127.0.0.1 --port "$PORT" "${EXTRA[@]}" "$@"

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Stop the LLM server whenever a game is running, so the game gets the VRAM and RAM.
+# The server is not restarted afterwards; `oc` starts it on demand.
+set -uo pipefail
+
+# Steam starts every game (native and Proton) through `reaper SteamLaunch AppId=<id>`.
+# Add more with e.g. GAME_PATTERN='reaper SteamLaunch AppId=|lutris-wrapper'.
+GAME_PATTERN="${GAME_PATTERN:-reaper SteamLaunch AppId=}"
+INTERVAL="${INTERVAL:-5}"
+
+while true; do
+  if pgrep -f "$GAME_PATTERN" >/dev/null && systemctl --user is-active --quiet llm; then
+    echo "game detected, stopping llm"
+    systemctl --user stop llm
+  fi
+  sleep "$INTERVAL"
+done

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# OpenCode for the local model. Skipping ~/.claude skills and rules cuts the system prompt
+# from ~14K to ~6K tokens, which is ~10 s less prefill per cold turn on a 6 GB GPU.
+export OPENCODE_DISABLE_CLAUDE_CODE=1 OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1
+
+# The server is started on demand, not at login, so it holds no memory until used.
+if ! systemctl --user is-active --quiet llm; then
+  if pgrep -f "${GAME_PATTERN:-reaper SteamLaunch AppId=}" >/dev/null; then
+    echo "oc: a game is running, so the local model is stopped (llm-gameguard). Close the game first." >&2
+    exit 1
+  fi
+  systemctl --user reset-failed llm 2>/dev/null
+  systemctl --user start llm
+fi
+exec opencode "$@"
