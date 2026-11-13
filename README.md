@@ -96,3 +96,7 @@ The trade-off: while the model is awake, other apps get ~18 GB less RAM and are 
 ## Security
 
 The server binds to `127.0.0.1` only and has no API key, so do not expose port 8080. The model is uncensored and will run any command you approve. Review permission prompts, and avoid `--auto` outside throwaway directories.
+
+## License
+
+MIT. See `LICENSE`.
