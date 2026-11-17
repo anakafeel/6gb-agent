@@ -1,0 +1,29 @@
+[Unit]
+Description=Fast local chat model (4B, fully on the GPU), for the phone over Tailscale
+After=network.target
+# Both models do not fit in 6 GB together: starting one stops the other.
+Conflicts=llm.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+# Same launcher as llm.service, with a small model that needs no CPU offload.
+Environment=MODEL=%h/models/Huihui-Qwen3.5-4B-abliterated.Q4_K_M.gguf
+Environment=ALIAS=qwen3.5-4b
+Environment=PORT=8081
+Environment=CTX=8192
+Environment=UBATCH=512
+# No hidden thinking: answers start at once.
+Environment=THINK_BUDGET=0
+Environment=IDLE=600
+# The weights live in VRAM, so there is nothing to pin in RAM.
+Environment=MLOCK=0
+# This port is published to the tailnet, so it needs a key (one per line in the file).
+ExecStart=%h/.local/bin/llm-serve --api-key-file %h/.config/llm/api-keys
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=default.target

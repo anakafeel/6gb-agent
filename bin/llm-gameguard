@@ -9,9 +9,13 @@ GAME_PATTERN="${GAME_PATTERN:-reaper SteamLaunch AppId=}"
 INTERVAL="${INTERVAL:-5}"
 
 while true; do
-  if pgrep -f "$GAME_PATTERN" >/dev/null && systemctl --user is-active --quiet llm; then
-    echo "game detected, stopping llm"
-    systemctl --user stop llm
+  if pgrep -f "$GAME_PATTERN" >/dev/null; then
+    for unit in llm llm-chat; do
+      if systemctl --user is-active --quiet "$unit"; then
+        echo "game detected, stopping $unit"
+        systemctl --user stop "$unit"
+      fi
+    done
   fi
   sleep "$INTERVAL"
 done
