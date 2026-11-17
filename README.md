@@ -27,6 +27,7 @@ Tuning results: `--n-cpu-moe` below 40 runs out of VRAM once the desktop holds 1
 | `bin/llm-serve` | `~/.local/bin/llm-serve` | llama-server with the tuned flags. Every value can be overridden with env vars. |
 | `systemd/llm.service` | `~/.config/systemd/user/llm.service` | Started on demand by `oc`. Weights pinned in RAM, restarts after crashes, killed first under memory pressure. |
 | `bin/llm-gameguard` + `systemd/llm-gameguard.service` | `~/.local/bin`, enabled at login | Stops the model within 5 s of a Steam game starting. |
+| `systemd/llm-chat.service` | `~/.config/systemd/user/llm-chat.service`, enabled at login | A small 4B model that sits fully on the GPU, for fast chat and for the phone. See "Fast chat model" below. |
 | `bin/oc` | `~/.local/bin/oc` | Starts the model if needed (refuses while a game runs), then runs OpenCode without `~/.claude` skills, which cuts the system prompt from 14K to 6K tokens. |
 | `opencode/opencode.json` | merged into `~/.config/opencode/opencode.json` | The `local` provider, with `qwen-think` and `qwen-fast`. |
 | `opencode/AGENTS.md` | `~/.config/opencode/AGENTS.md` | Working rules tuned for a slow local model. |
@@ -51,6 +52,60 @@ A 35B model needs tighter tasks than Claude. Good prompts include:
 3. **Done condition:** say what finished looks like. Example: "Then show `git diff --stat`. Do not commit."
 
 Split big jobs into steps, one prompt per step, in the same session. For architecture questions or bugs it can't crack after two tries, switch to Claude.
+
+## Fast chat model (and using it from a phone)
+
+The 35B model is for agent work. For quick questions it is slow to load and needs about 18 GB of RAM. `llm-chat.service` runs a second, small model for chat: Huihui-Qwen3.5-4B-abliterated at Q4_K_M (2.7 GB). The whole model sits on the GPU, so nothing runs on the CPU.
+
+Measured on the reference machine, with the desktop already using 2.6 GB of VRAM:
+
+| | 4B chat model |
+|---|---|
+| Generation | 76 tok/s |
+| VRAM in use, model plus desktop | 5.6 GB of 6 GB |
+| Context | 8K (16K did not fit: out of memory by about 50 MB) |
+| Thinking | off, so answers start at once |
+
+The two models do not fit in 6 GB together. The unit has `Conflicts=llm.service`, so starting one stops the other. `oc` starts the 35B, which stops the chat model. Start the chat model again with `systemctl --user start llm-chat`.
+
+### Set it up
+
+```sh
+# 1. Download the model (2.7 GB)
+curl -fL -C - -o ~/models/Huihui-Qwen3.5-4B-abliterated.Q4_K_M.gguf \
+  https://huggingface.co/mradermacher/Huihui-Qwen3.5-4B-abliterated-GGUF/resolve/main/Huihui-Qwen3.5-4B-abliterated.Q4_K_M.gguf
+
+# 2. Make an API key that only you can read
+mkdir -p ~/.config/llm && (umask 077; openssl rand -hex 32 > ~/.config/llm/api-keys)
+
+# 3. Install and start the service
+ln -s "$PWD/systemd/llm-chat.service" ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now llm-chat
+curl localhost:8081/health
+```
+
+The chat page is at http://127.0.0.1:8081. Paste the key from `~/.config/llm/api-keys` into the page settings (API Key field).
+
+### Reach it from a phone with Tailscale
+
+The server listens on `127.0.0.1` only. Tailscale Serve publishes it to your own tailnet over HTTPS. Nothing is open to the public internet.
+
+```sh
+sudo tailscale serve --bg --https=443 http://127.0.0.1:8081
+```
+
+On the phone, with Tailscale on, open `https://<laptop-name>.<your-tailnet>.ts.net` and paste the key in the settings.
+
+The laptop must be on and awake. To stop it sleeping while you are out, leave this running in a terminal:
+
+```sh
+systemd-inhibit --what=sleep:handle-lid-switch sleep infinity
+```
+
+Turn phone access off with `sudo tailscale serve reset`.
+
+If the model fails to load with `cudaMalloc failed: out of memory`, close apps that use the GPU, or lower the context with `systemctl --user edit llm-chat` and `Environment=CTX=4096`.
 
 ## Failure modes and recovery
 
@@ -95,7 +150,7 @@ The trade-off: while the model is awake, other apps get ~18 GB less RAM and are 
 
 ## Security
 
-The server binds to `127.0.0.1` only and has no API key, so do not expose port 8080. The model is uncensored and will run any command you approve. Review permission prompts, and avoid `--auto` outside throwaway directories.
+The 35B server binds to `127.0.0.1` only and has no API key, so do not expose port 8080. The chat server on port 8081 requires the key in `~/.config/llm/api-keys`. With Tailscale Serve on, every device on your tailnet can reach it, and the key is the only lock, so keep the key private. The model is uncensored and will run any command you approve. Review permission prompts, and avoid `--auto` outside throwaway directories.
 
 ## License
 
